@@ -6,6 +6,8 @@ substitutions:
   _REPOSITORY: "deployment-images"
   _IMAGE: "webapp"
   _TOPIC: "deployment-events"
+  _CLUSTER: "event-driven-gke"
+  _ZONE: "europe-west1-b"
 
 steps:
 
@@ -33,7 +35,6 @@ steps:
 
 # ============================================
 # PUBLISH EVENT
-# (Simulates GCR notification)
 # ============================================
 
 - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -44,12 +45,50 @@ steps:
     - |
       gcloud pubsub topics publish ${_TOPIC} \
       --message='{
-        "project":"'"$PROJECT_ID"'",
-        "repository":"'"${_REPOSITORY}"'",
         "image":"'"${_IMAGE}"'",
-        "tag":"'"$SHORT_SHA"'",
-        "registry":"'"${_REGION}"'-docker.pkg.dev"
+        "tag":"'"$SHORT_SHA"'"
       }'
+
+# ============================================
+# GET GKE CREDENTIALS
+# ============================================
+
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  id: Get Cluster Credentials
+  entrypoint: gcloud
+  args:
+    - container
+    - clusters
+    - get-credentials
+    - ${_CLUSTER}
+    - --zone=${_ZONE}
+    - --project=$PROJECT_ID
+
+# ============================================
+# UPDATE IMAGE TAG
+# ============================================
+
+- name: ubuntu
+  id: Update Manifest
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      sed -i "s|IMAGE_PLACEHOLDER|${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA|g" k8s/deployment.yaml
+
+# ============================================
+# DEPLOY
+# ============================================
+
+- name: gcr.io/cloud-builders/kubectl
+  id: Deploy to GKE
+  env:
+    - CLOUDSDK_COMPUTE_ZONE=${_ZONE}
+    - CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER}
+  args:
+    - apply
+    - -f
+    - k8s/
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA

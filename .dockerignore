@@ -1,0 +1,12 @@
+.git
+.gitignore
+
+terraform/
+
+README.md
+
+__pycache__/
+
+*.pyc
+
+.env

@@ -1,0 +1,55 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: "europe-west1"
+  _REPOSITORY: "deployment-images"
+  _IMAGE: "webapp"
+  _TOPIC: "deployment-events"
+
+steps:
+
+# ============================================
+# BUILD IMAGE
+# ============================================
+
+- name: gcr.io/cloud-builders/docker
+  id: Build Image
+  args:
+    - build
+    - -t
+    - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
+    - .
+
+# ============================================
+# PUSH IMAGE
+# ============================================
+
+- name: gcr.io/cloud-builders/docker
+  id: Push Image
+  args:
+    - push
+    - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
+
+# ============================================
+# PUBLISH EVENT
+# (Simulates GCR notification)
+# ============================================
+
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  id: Publish Deployment Event
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      gcloud pubsub topics publish ${_TOPIC} \
+      --message='{
+        "project":"'"$PROJECT_ID"'",
+        "repository":"'"${_REPOSITORY}"'",
+        "image":"'"${_IMAGE}"'",
+        "tag":"'"$SHORT_SHA"'",
+        "registry":"'"${_REGION}"'-docker.pkg.dev"
+      }'
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
